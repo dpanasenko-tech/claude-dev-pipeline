@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CI/CD топология — пример пайплайна</title>
+<style>
+  :root{color-scheme:light}
+  body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}
+  img{max-width:100%}
+</style>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --panel-2:#f5f7fa; --ink:#1a2331; --muted:#5a6675;
+    --line:#d7dde5; --accent:#0d7d88;
+    --dev:#b45309;  --dev-bg:#fdf3e3;
+    --git:#5a54cf;  --git-bg:#eeecfb;
+    --stage:#2258d8; --stage-bg:#e9f0ff;
+    --prod:#0a824a; --prod-bg:#e4f5eb;
+    --shadow:0 1px 2px rgba(20,30,45,.05),0 6px 22px rgba(20,30,45,.06);
+    --radius:12px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0c1015; --panel:#151b23; --panel-2:#1b232d; --ink:#e6edf3; --muted:#93a1b1;
+      --line:#28313d; --accent:#33c7c1;
+      --dev:#f0a94b;  --dev-bg:#2a2013;
+      --git:#a49dff;  --git-bg:#1d1b31;
+      --stage:#6fa0ff; --stage-bg:#141f38;
+      --prod:#48cf87; --prod-bg:#0f2519;
+      --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 26px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c1015; --panel:#151b23; --panel-2:#1b232d; --ink:#e6edf3; --muted:#93a1b1;
+    --line:#28313d; --accent:#33c7c1;
+    --dev:#f0a94b;  --dev-bg:#2a2013;
+    --git:#a49dff;  --git-bg:#1d1b31;
+    --stage:#6fa0ff; --stage-bg:#141f38;
+    --prod:#48cf87; --prod-bg:#0f2519;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 26px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f5; --panel:#ffffff; --panel-2:#f5f7fa; --ink:#1a2331; --muted:#5a6675;
+    --line:#d7dde5; --accent:#0d7d88;
+    --dev:#b45309;  --dev-bg:#fdf3e3;
+    --git:#5a54cf;  --git-bg:#eeecfb;
+    --stage:#2258d8; --stage-bg:#e9f0ff;
+    --prod:#0a824a; --prod-bg:#e4f5eb;
+    --shadow:0 1px 2px rgba(20,30,45,.05),0 6px 22px rgba(20,30,45,.06);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0}
+  .page{
+    background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5; padding:clamp(18px,4vw,52px);
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,monospace;}
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  header.head{margin-bottom:30px;}
+  .kicker{
+    font-family:ui-monospace,monospace; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 10px;
+  }
+  h1{
+    font-size:clamp(26px,4.2vw,40px); line-height:1.08; margin:0 0 12px;
+    letter-spacing:-.02em; text-wrap:balance; font-weight:760;
+  }
+  .sub{color:var(--muted); font-size:clamp(15px,1.6vw,17px); max-width:62ch; margin:0;}
+
+  .hosts{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px;}
+  .host{
+    display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:9px 13px;box-shadow:var(--shadow);flex:1 1 240px;min-width:220px;
+  }
+  .host .dot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .host b{font-size:13.5px;display:block;}
+  .host span{font-size:11.5px;color:var(--muted);}
+
+  .flow{display:flex;flex-direction:column;gap:0;margin-top:14px;}
+
+  .band{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:18px 18px 20px; position:relative;
+    border-top:3px solid var(--tier,var(--accent));
+  }
+  .band--dev{--tier:var(--dev)} .band--git{--tier:var(--git)}
+  .band--stage{--tier:var(--stage)} .band--prod{--tier:var(--prod)}
+
+  .band-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .band-num{
+    font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--tier);
+    border:1.5px solid var(--tier);border-radius:6px;padding:2px 7px;line-height:1;
+  }
+  .band-title{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:0;}
+  .band-note{font-size:13px;color:var(--muted);margin-left:auto;max-width:46ch;text-align:right;}
+
+  .lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;}
+
+  .card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:13px 14px;
+    display:flex;flex-direction:column;gap:8px;position:relative;
+  }
+  .card--full{grid-column:1/-1;}
+  .card-top{display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .card-name{font-weight:680;font-size:14.5px;display:flex;align-items:center;gap:8px;}
+  .card-name .swatch{width:8px;height:8px;border-radius:50%;background:var(--tier,var(--accent));flex:none;}
+  .chip{
+    font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.02em;
+    background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:2px 9px;color:var(--muted);
+    white-space:nowrap;
+  }
+  .card p{margin:0;font-size:12.8px;color:var(--muted);}
+  .kv{display:flex;flex-wrap:wrap;gap:5px;}
+  .kv code{
+    font-family:ui-monospace,monospace;font-size:11px;background:var(--bg);
+    border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--ink);white-space:nowrap;
+  }
+  .tag{
+    align-self:flex-start;font-size:10.5px;font-weight:600;letter-spacing:.02em;
+    background:var(--tier-bg);color:var(--tier);border-radius:5px;padding:2px 7px;
+  }
+  .band--dev .tag{--tier-bg:var(--dev-bg)} .band--stage .tag{--tier-bg:var(--stage-bg)}
+  .band--prod .tag{--tier-bg:var(--prod-bg)} .band--git .tag{--tier-bg:var(--git-bg)}
+
+  .arrow{display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:3px;}
+  .arrow .stem{width:2px;height:14px;background:var(--line);}
+  .arrow .chev{
+    width:11px;height:11px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);
+    transform:rotate(45deg);margin-top:-7px;
+  }
+  .arrow .lbl{
+    font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);
+    background:var(--bg);padding:2px 10px;border-radius:20px;border:1px solid var(--line);margin-top:4px;
+  }
+
+  .pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin-top:4px;}
+  .stage{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;flex:1 1 130px;min-width:120px;display:flex;flex-direction:column;gap:2px;
+  }
+  .stage b{font-size:12.5px;}
+  .stage small{font-size:10.5px;color:var(--muted);font-family:ui-monospace,monospace;}
+  .stage .n{color:var(--git);font-weight:700;}
+  .stage--auto{flex:2.4 1 280px;border:1.5px dashed var(--stage);background:var(--stage-bg);}
+  .stage--auto .sub2{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}
+  .stage--auto .sub2 span{font-family:ui-monospace,monospace;font-size:10px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:1px 6px;}
+  .stage--auto .sub2 .go{color:var(--prod);border-color:var(--prod);font-weight:700;}
+  .gate{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:15px;padding:0 2px;line-height:1;}
+  .gate small{font-size:8.5px;color:var(--muted);font-family:ui-monospace,monospace;letter-spacing:.03em;margin-top:2px;}
+  .gate--h{color:var(--git);}
+
+  .rules{
+    margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:20px;
+  }
+  .rules h3{margin:0 0 14px;font-size:15px;letter-spacing:.01em;}
+  .rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px 22px;}
+  .rule{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);}
+  .rule b{color:var(--ink);font-weight:640;}
+  .rule .mk{color:var(--accent);font-weight:700;flex:none;line-height:1.45;}
+
+  footer.foot{
+    margin-top:20px;font-size:12.5px;color:var(--muted);text-align:center;
+    border-top:1px dashed var(--line);padding-top:16px;
+  }
+  footer.foot b{color:var(--ink);}
+
+  @media (max-width:560px){
+    .band-note{margin-left:0;text-align:left;max-width:none;}
+    .band-head{gap:8px;}
+  }
+
+  .addendum-rule{border:0;border-top:2px dashed var(--line);margin:34px 0 0;}
+  .band--ver{--tier:var(--accent);margin-top:22px;}
+  .band--ver .tag{--tier-bg:var(--panel-2)}
+  .band--ver .gate{color:var(--accent);}
+  .draft-badge{
+    font-family:ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dev);background:var(--dev-bg);
+    border:1.5px dashed var(--dev);border-radius:6px;padding:3px 9px;line-height:1;
+  }
+  .ver-foot{
+    margin-top:16px;font-size:12.5px;color:var(--muted);line-height:1.5;
+    border:1px dashed var(--dev);background:var(--dev-bg);border-radius:10px;
+    padding:12px 14px;display:flex;gap:10px;align-items:baseline;
+  }
+  .ver-foot .mk{color:var(--dev);font-weight:700;font-family:ui-monospace,monospace;flex:none;}
+  .ver-foot b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="wrap">
+
+  <header class="head">
+    <p class="kicker">acme-platform · pipeline &amp; топология</p>
+    <h1>CI/CD: от локальной машины до prod через staged-пайплайн</h1>
+    <p class="sub">Три машины, две параллельные dev-сессии, один общий <span class="mono">main</span> и один staging, на котором проходит Phase B. Промоушен на реальный prod — отдельная машина.</p>
+  </header>
+
+  <section class="hosts" aria-label="Физические хосты">
+    <div class="host"><span class="dot" style="background:var(--dev)"></span><div><b>Dev-машина</b><span>локальная разработка · lane dev</span></div></div>
+    <div class="host"><span class="dot" style="background:var(--stage)"></span><div><b>Staging VPS</b><span class="mono">dev1 · dev2 · stage</span></div></div>
+    <div class="host"><span class="dot" style="background:var(--prod)"></span><div><b>Prod VPS</b><span class="mono">203.0.113.10 · app.example.com</span></div></div>
+  </section>
+
+  <div class="flow">
+
+    <!-- DEVELOP -->
+    <section class="band band--dev">
+      <div class="band-head">
+        <span class="band-num">01</span>
+        <h2 class="band-title">Разработка — параллельно, изолированно</h2>
+        <p class="band-note">Stages 1–5 + Phase A. Каждый лейн = 1 клон ↔ 1 стек (bind-mount <span class="mono">../:/app</span>).</p>
+      </div>
+      <div class="lanes">
+        <div class="card">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>Dev-машина · lane dev</span><span class="chip">dev-машина</span></div>
+          <p>Правка кода, авторинг стадий, unit/integration.</p>
+          <div class="kv"><code>quality-check.sh</code><code>SMOKE_MODE=ci</code></div>
+          <span class="tag">не блокируется рейт-лимитом внешнего API</span>
+        </div>
+        <div class="card">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>dev1 · сессия A</span><span class="chip">Staging VPS</span></div>
+          <p>Клон <span class="mono">…-acc2</span> → стек <span class="mono">acme-platform-stage</span>. Ручной тест ветки на своём MCP.</p>
+          <div class="kv"><code>pg:5436</code><code>bi:8090</code><code>mcp:8767</code></div>
+          <span class="tag">данные из prod · тенанты inactive</span>
+        </div>
+        <div class="card">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>dev2 · сессия B</span><span class="chip">Staging VPS</span></div>
+          <p>Клон <span class="mono">…-laneB</span> → стек <span class="mono">acme-platform-stage2</span>. Свой том/сеть/порты.</p>
+          <div class="kv"><code>pg:5437</code><code>bi:8091</code><code>mcp:8768</code></div>
+          <span class="tag">tunnel-only · изолирован от A</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="arrow"><div class="stem"></div><div class="chev"></div><div class="lbl">git push · открыть staged PRs</div></div>
+
+    <!-- INTEGRATE -->
+    <section class="band band--git">
+      <div class="band-head">
+        <span class="band-num">02</span>
+        <h2 class="band-title">Интеграция — GitHub, staged-пайплайн</h2>
+        <p class="band-note"><span class="mono">your-org/your-project</span> · один <span class="mono">main</span> · acc1 + acc2.</p>
+      </div>
+      <div class="pipe">
+        <div class="stage"><b><span class="n">1</span> planner</b><small>brief.md</small></div>
+        <span class="gate gate--h">👤<small>аппрув</small></span>
+        <div class="stage"><b><span class="n">2</span> architect</b><small>plan.md</small></div>
+        <span class="gate gate--h">👤<small>аппрув</small></span>
+        <div class="stage stage--auto">
+          <b>⚙️ <span class="n">3–6A</span> автономно — один PR</b>
+          <div class="sub2"><span>tdd</span><span>impl</span><span>reviewer</span><span class="go">Phase A GO</span></div>
+        </div>
+        <span class="gate gate--h">👤<small>GO→merge</small></span>
+        <div class="stage"><b><span class="n">6B</span> deploy</b><small>staging→prod</small></div>
+      </div>
+      <div class="lanes" style="margin-top:12px">
+        <div class="card card--full">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>Гейты: только план и Phase A GO</span><span class="chip">GitHub</span></div>
+          <p>Человек одобряет <b>бриф (1)</b> и <b>план (2)</b>. После мерджа плана агент автономно доводит <b>3→6A</b> одним PR (tests→code→review→Phase A) и пушит; следующий чекпоинт — <b>Phase A = GO</b>. Ревьюер — внутренний гейт (свежий агент сам чинит блокеры), <span class="mono">review.md</span> — запись, не чекпоинт. Merge в <span class="mono">main</span> последователен; техдолг — issues <span class="mono">followup</span>.</p>
+          <span class="tag">CI = локальный quality-check + smoke · GitHub Actions в репо нет</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="arrow"><div class="stem"></div><div class="chev"></div><div class="lbl">merge в main (serial) · deploy-клон делает git pull</div></div>
+
+    <!-- STAGE -->
+    <section class="band band--stage">
+      <div class="band-head">
+        <span class="band-num">03</span>
+        <h2 class="band-title">Staging — Phase B, интеграционная приёмка</h2>
+        <p class="band-note">Единственное место с GlitchTip'ом / reverse-proxy / браузерным коннектором → здесь и только здесь идёт Phase B.</p>
+      </div>
+      <div class="lanes">
+        <div class="card card--full">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>Общий стек <span class="mono">acme-platform</span> → staging.example.com</span><span class="chip">Staging VPS</span></div>
+          <p>Deploy-клон <span class="mono">…-deploy</span> (закреплён на <span class="mono">main</span>/RC, руками не трогают) питает общий стек. Никакой dev-лейн сюда не пишет.</p>
+          <div class="kv"><code>git pull origin main</code><code>up -d --build app worker</code><code>SMOKE_MODE=staging</code></div>
+          <span class="tag">manual acceptance · браузерный коннектор · GlitchTip UI · GO/NO-GO</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="arrow"><div class="stem"></div><div class="chev"></div><div class="lbl">GO → промоушен: git pull main на prod-хосте (SSH)</div></div>
+
+    <!-- PROD -->
+    <section class="band band--prod">
+      <div class="band-head">
+        <span class="band-num">04</span>
+        <h2 class="band-title">Production — живые пользователи</h2>
+        <p class="band-note">Отдельная машина. Со staging VPS недоступна — деплой по SSH на тот хост.</p>
+      </div>
+      <div class="lanes">
+        <div class="card card--full">
+          <div class="card-top"><span class="card-name"><span class="swatch"></span>app.example.com · коннектор <span class="mono">acme-prod-connector</span></span><span class="chip">Prod VPS</span></div>
+          <p>Все тенанты продукта. Деплой инкремента по DEPLOY.md Сценарий B из <span class="mono">main</span>. Rollback = revert PR + пересборка.</p>
+          <div class="kv"><code>203.0.113.10</code><code>ssh → git pull → up --build</code></div>
+          <span class="tag">tagged main · реальные данные</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="rules">
+    <h3>Инварианты, которые держат схему целой</h3>
+    <div class="rules-grid">
+      <div class="rule"><span class="mk">→</span><span><b>1 стек ↔ 1 клон.</b> dev1/dev2 никогда не питают stage/prod. Bind-mount = ветка клона молча определяет код стека.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Deploy-клон всегда на main.</b> Ветку в нём не переключать — иначе общий stage подхватит чужой WIP.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Staging: тенанты <span class="mono">is_active=false</span>.</b> Токены dummy. Иначе cron бьёт внешний API → бан per-token.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Пересоздавать, не рестартить.</b> <span class="mono">up --force-recreate</span>, не <span class="mono">docker restart</span> — иначе живой процесс держит старый код.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b><span class="mono">gh MERGED</span> ≠ код на main.</b> Чейнинг PR оседает в промежуточных ветках → <span class="mono">git grep origin/main</span> до деплоя.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Окно VS Code = своя папка.</b> Сессия A→dev1, B→dev2, не рут. Deploy-клон не открывать.</span></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Узкое горлышко — <b>не число окружений</b>, а один <b>main</b> + ручные аппрувы + ограниченные ресурсы staging-хоста (потолок ~2 dev-лейна). Параллельность максимальна на Stages 1–5; всё сходится в один <b>main</b> и один <b>staging</b> (Phase B), затем промоушен на prod.
+  </footer>
+
+  <!-- ============ ADDENDUM: управление версиями продукта (draft) ============ -->
+  <hr class="addendum-rule" aria-hidden="true">
+
+  <section class="band band--ver" aria-label="Управление версиями продукта">
+    <div class="band-head">
+      <span class="draft-badge">draft</span>
+      <h2 class="band-title">Управление версиями продукта</h2>
+      <p class="band-note">Ортогонально топологии выше: как номер версии рождается, запекается в образ и становится видимым в рантайме.</p>
+    </div>
+
+    <div class="pipe">
+      <div class="stage"><b>① Авторинг</b><small>tag · changelog · release</small></div>
+      <span class="gate">🔒<small>нет тега → REFUSE</small></span>
+      <div class="stage"><b>② Сборка</b><small>ARG→ENV→LABEL</small></div>
+      <span class="gate">→<small>build-args</small></span>
+      <div class="stage"><b>③ Рантайм</b><small>GET /version</small></div>
+      <span class="gate">→<small>per-host</small></span>
+      <div class="stage"><b>④ Потребление</b><small>checkout тега → build</small></div>
+    </div>
+
+    <div class="lanes" style="margin-top:12px">
+      <div class="card">
+        <div class="card-top"><span class="card-name"><span class="swatch"></span>Тег — единственный источник версии</span><span class="chip">SemVer</span></div>
+        <p>Строка версии берётся только из git-тега, руками не придумывается.</p>
+        <div class="kv"><code>git describe --tags --exact-match</code></div>
+        <span class="tag">тег == OCI label == /version.version</span>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="card-name"><span class="swatch"></span>Метаданные запечены в образ</span><span class="chip">OCI</span></div>
+        <p>Коммит восстановим по образу без запуска контейнера.</p>
+        <div class="kv"><code>image.revision</code><code>image.version</code><code>image.created</code></div>
+        <span class="tag">docker inspect · GIT_SHA · BUILD_TIME</span>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="card-name"><span class="swatch"></span>env — из APP_ENV хоста</span><span class="chip">per-host</span></div>
+        <p>Один и тот же тег отличают по окружению полем <span class="mono">env</span>.</p>
+        <div class="kv"><code>{version, git_sha, built_at, env}</code></div>
+        <span class="tag">«vX / staging» ∥ «vX / prod»</span>
+      </div>
+      <div class="card card--full">
+        <div class="card-top"><span class="card-name"><span class="swatch"></span>Окружения потребляют версию независимо</span><span class="chip">каталог версий</span></div>
+        <p>GitHub Releases — общий список всех версий; <b>что где крутится</b> решает каждый хост при деплое (checkout тега → build). Staging может стоять на <span class="mono">vX</span>, prod в тот же момент — на <span class="mono">vY</span>. <b>Prod — consume-only:</b> только <span class="mono">git fetch --tags</span> → build, теги сам не создаёт, git-cliff туда не ставится.</p>
+        <span class="tag">release рождается один раз · prod только потребляет</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="rules" style="margin-top:14px">
+    <h3>Инварианты версионирования</h3>
+    <div class="rules-grid">
+      <div class="rule"><span class="mk">→</span><span><b>Нет деплоя без SemVer-тега (AC-6).</b> <span class="mono">untagged / dirty / latest / unknown</span> → деплой <span class="mono">exit 1</span>.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Релиз рождается один раз.</b> На машине-авторинге (есть <span class="mono">gh</span> write + git-cliff). <i>Где именно — dev/CI vs staging — открытый вопрос черновика.</i></span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Prod — consume-only.</b> Никогда не создаёт теги и не авторит релизы. git-cliff на prod не ставится.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>CHANGELOG живёт в git.</b> Коммитится как код; <span class="mono">pull</span> перед правкой → нет расхождений между аккаунтами.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>Тег окружение не диктует.</b> Один каталог версий; выбор «что где» — на хосте. Одно ≠ другому.</span></div>
+      <div class="rule"><span class="mk">→</span><span><b>git-cliff — инструмент авторинга, не рантайм.</b> Не в <span class="mono">pyproject / uv.lock</span>, в образ не попадает.</span></div>
+    </div>
+    <div class="ver-foot">
+      <span class="mk">✎ draft</span>
+      <span><b>Черновик схемы версионирования</b> · отражает обсуждаемую модель (см. runbook release-traceability, AC-6). Открытый пункт: машина-авторинг релизов (dev/CI или staging-VPS) и связанное правило «prod — только consume». Уточняется — не финал.</span>
+    </div>
+  </section>
+
+</div>
+</div>
+
+</body>
+</html>
