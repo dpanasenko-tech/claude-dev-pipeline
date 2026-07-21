@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(scripts/quality-check.sh)",
+      "Bash(scripts/smoke-check.sh)",
+      "Bash(bash scripts/quality-check.sh)",
+      "Bash(bash scripts/smoke-check.sh)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git commit --no-verify:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git fetch origin --prune --quiet 2>/dev/null; echo \"[git] synced origin. local main $(git rev-parse --short main 2>/dev/null) | origin/main $(git rev-parse --short origin/main 2>/dev/null) — НЕ судить о merge/branch-состоянии по локальным ref без свежего fetch.\""
+          },
+          {
+            "type": "command",
+            "command": "echo '[claude-protocol] Read CLAUDE.md. Pipeline: planner -> architect -> tdd-engineer -> implementer -> reviewer -> release-engineer. Human approval between stages. Test-first. Vertical slices only.'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[claude-protocol] You touched code. Before claiming done: (1) is there a failing test that pinned this change? (2) run scripts/quality-check.sh (3) update docs/features/<slug>/ artifacts if scope shifted.'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[claude-protocol] Stopping. Checklist: tests green? lint/types clean? DoD met (CLAUDE.md §7)? If a stage handoff is next, name the agent and the artifact path.'"
+          }
+        ]
+      }
+    ]
+  }
+}
